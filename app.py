@@ -27,7 +27,7 @@ try:
 except Exception:
     FFMPEG_EXE = shutil.which("ffmpeg")
 
-app = FastAPI(title="MX Downloader", version="1.2.0")
+app = FastAPI(title="MX Downloader", version="1.3.0")
 
 cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
 cors_origins = ["*"] if cors_raw == "*" else [x.strip() for x in cors_raw.split(",") if x.strip()]
@@ -86,7 +86,25 @@ def _validate_public_url(url: str) -> str:
     return url
 
 
-def _base_ydl_opts() -> dict[str, Any]:
+def _is_youtube_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return (
+        host == "youtu.be"
+        or host.endswith(".youtu.be")
+        or host == "youtube.com"
+        or host.endswith(".youtube.com")
+        or host == "youtube-nocookie.com"
+        or host.endswith(".youtube-nocookie.com")
+    )
+
+
+def _client_candidates(url: str) -> list[str | None]:
+    if _is_youtube_url(url):
+        return ["android_vr", "web_embedded", None]
+    return [None]
+
+
+def _base_ydl_opts(youtube_client: str | None = None) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -102,12 +120,28 @@ def _base_ydl_opts() -> dict[str, Any]:
     }
     if FFMPEG_EXE:
         opts["ffmpeg_location"] = FFMPEG_EXE
+    if youtube_client:
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": [youtube_client],
+            }
+        }
     return opts
 
 
 def _extract_info(url: str) -> dict[str, Any]:
-    with yt_dlp.YoutubeDL(_base_ydl_opts()) as ydl:
-        return ydl.extract_info(url, download=False)
+    last_error: Exception | None = None
+    for client in _client_candidates(url):
+        try:
+            with yt_dlp.YoutubeDL(_base_ydl_opts(client)) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception as exc:
+            last_error = exc
+            print(f"yt-dlp analyze failed client={client or 'default'}: {exc}", flush=True)
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No extractor client succeeded.")
 
 
 def _format_options(info: dict[str, Any]) -> list[dict[str, Any]]:
@@ -143,12 +177,12 @@ def _format_options(info: dict[str, Any]) -> list[dict[str, Any]]:
     return options
 
 
-def _download_to_temp(url: str, quality: str) -> tuple[Path, Path]:
+def _download_once(url: str, quality: str, youtube_client: str | None) -> tuple[Path, Path]:
     temp_dir = Path(tempfile.mkdtemp(prefix="mxdl_"))
 
     if quality == "audio":
         opts = {
-            **_base_ydl_opts(),
+            **_base_ydl_opts(youtube_client),
             "format": "bestaudio/best",
             "outtmpl": str(temp_dir / "%(title).120B-%(id)s.%(ext)s"),
             "postprocessors": [
@@ -171,7 +205,7 @@ def _download_to_temp(url: str, quality: str) -> tuple[Path, Path]:
             raise HTTPException(400, "Invalid quality.")
 
         opts = {
-            **_base_ydl_opts(),
+            **_base_ydl_opts(youtube_client),
             "format": f"bestvideo[height<={q}]+bestaudio/best[height<={q}]/best",
             "merge_output_format": "mp4",
             "outtmpl": str(temp_dir / "%(title).120B-%(id)s.%(ext)s"),
@@ -198,13 +232,29 @@ def _download_to_temp(url: str, quality: str) -> tuple[Path, Path]:
         raise
 
 
+def _download_to_temp(url: str, quality: str) -> tuple[Path, Path]:
+    last_error: Exception | None = None
+    for client in _client_candidates(url):
+        try:
+            return _download_once(url, quality, client)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            last_error = exc
+            print(f"yt-dlp download failed client={client or 'default'}: {exc}", flush=True)
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No extractor client succeeded.")
+
+
 @app.get("/api/health")
 def health():
     return {
         "ok": True,
         "service": "MX Downloader",
         "ffmpeg": bool(FFMPEG_EXE),
-        "version": "1.2.0",
+        "version": "1.3.0",
     }
 
 
@@ -217,7 +267,7 @@ async def analyze(payload: AnalyzeRequest):
     except yt_dlp.utils.DownloadError as exc:
         raise HTTPException(
             422,
-            "This link could not be analyzed. It may be private, DRM-protected, login-only, unsupported, or temporarily blocked.",
+            "This link could not be analyzed. The source may be private, protected, unsupported, or temporarily blocking this server.",
         ) from exc
     except Exception as exc:
         raise HTTPException(500, "Could not analyze this link.") from exc
