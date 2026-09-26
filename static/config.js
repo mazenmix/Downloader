@@ -1,6 +1,4 @@
 // MX Downloader frontend runtime configuration.
-// Leave blank for local FastAPI use. For Cloudflare Pages, set this to your
-// public Python backend origin, for example: https://mx-downloader-api.example.com
 window.MX_CONFIG = {
-  API_BASE: ""
+  API_BASE: "https://mxdownloader-mazenmix-8613887.onrender.com"
 };
