@@ -21,13 +21,14 @@ import yt_dlp
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+POT_PROVIDER_URL = os.getenv("POT_PROVIDER_URL", "").strip().rstrip("/")
 
 try:
     FFMPEG_EXE = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
 except Exception:
     FFMPEG_EXE = shutil.which("ffmpeg")
 
-app = FastAPI(title="MX Downloader", version="1.3.0")
+app = FastAPI(title="MX Downloader", version="1.4.0")
 
 cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
 cors_origins = ["*"] if cors_raw == "*" else [x.strip() for x in cors_raw.split(",") if x.strip()]
@@ -100,6 +101,8 @@ def _is_youtube_url(url: str) -> bool:
 
 def _client_candidates(url: str) -> list[str | None]:
     if _is_youtube_url(url):
+        if POT_PROVIDER_URL:
+            return ["mweb", "android_vr", "web_embedded", None]
         return ["android_vr", "web_embedded", None]
     return [None]
 
@@ -120,12 +123,15 @@ def _base_ydl_opts(youtube_client: str | None = None) -> dict[str, Any]:
     }
     if FFMPEG_EXE:
         opts["ffmpeg_location"] = FFMPEG_EXE
+
+    extractor_args: dict[str, dict[str, list[str]]] = {}
     if youtube_client:
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": [youtube_client],
-            }
-        }
+        extractor_args["youtube"] = {"player_client": [youtube_client]}
+    if POT_PROVIDER_URL and youtube_client == "mweb":
+        extractor_args["youtubepot-bgutilhttp"] = {"base_url": [POT_PROVIDER_URL]}
+    if extractor_args:
+        opts["extractor_args"] = extractor_args
+
     return opts
 
 
@@ -254,7 +260,8 @@ def health():
         "ok": True,
         "service": "MX Downloader",
         "ffmpeg": bool(FFMPEG_EXE),
-        "version": "1.3.0",
+        "pot_provider": bool(POT_PROVIDER_URL),
+        "version": "1.4.0",
     }
 
 
