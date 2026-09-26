@@ -16,16 +16,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 from starlette.background import BackgroundTask
+import imageio_ffmpeg
 import yt_dlp
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
-app = FastAPI(title="MX Downloader", version="1.1.0")
+try:
+    FFMPEG_EXE = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
+except Exception:
+    FFMPEG_EXE = shutil.which("ffmpeg")
 
-# Cloudflare Pages serves the frontend from a different origin than the Python backend.
-# Set CORS_ORIGINS to a comma-separated list in production, for example:
-# https://downloader.pages.dev,https://download.example.com
+app = FastAPI(title="MX Downloader", version="1.2.0")
+
 cors_raw = os.getenv("CORS_ORIGINS", "*").strip()
 cors_origins = ["*"] if cors_raw == "*" else [x.strip() for x in cors_raw.split(",") if x.strip()]
 
@@ -84,7 +87,7 @@ def _validate_public_url(url: str) -> str:
 
 
 def _base_ydl_opts() -> dict[str, Any]:
-    return {
+    opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -97,6 +100,9 @@ def _base_ydl_opts() -> dict[str, Any]:
         "restrictfilenames": True,
         "windowsfilenames": True,
     }
+    if FFMPEG_EXE:
+        opts["ffmpeg_location"] = FFMPEG_EXE
+    return opts
 
 
 def _extract_info(url: str) -> dict[str, Any]:
@@ -197,8 +203,8 @@ def health():
     return {
         "ok": True,
         "service": "MX Downloader",
-        "ffmpeg": shutil.which("ffmpeg") is not None,
-        "version": "1.1.0",
+        "ffmpeg": bool(FFMPEG_EXE),
+        "version": "1.2.0",
     }
 
 
