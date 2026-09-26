@@ -12,26 +12,44 @@ const duration = $("duration");
 const formats = $("formats");
 const downloadBtn = $("downloadBtn");
 const statusBox = $("status");
+const liveBadge = document.querySelector(".live");
 
 const API_BASE = (window.MX_CONFIG?.API_BASE || "").replace(/\/+$/, "");
 
 let currentUrl = "";
 let currentQuality = "";
+let backendReady = false;
 
 function apiUrl(path) {
   return API_BASE ? `${API_BASE}${path}` : path;
 }
 
-function backendConfigured() {
-  // Local FastAPI serves frontend + API from the same origin, so blank is valid locally.
-  const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
-  if (API_BASE || localHosts.has(location.hostname)) return true;
+function setLiveBadge(state) {
+  if (!liveBadge) return;
+  const dot = liveBadge.querySelector("span");
+  const label = state === "online" ? "ONLINE" : state === "checking" ? "CHECKING" : "BACKEND SETUP";
+  liveBadge.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) node.remove();
+  });
+  liveBadge.append(` ${label}`);
+  liveBadge.dataset.state = state;
+  if (dot) dot.style.opacity = state === "online" ? "1" : state === "checking" ? ".55" : ".35";
+}
 
-  showStatus(
-    "Frontend is online, but the download backend is not connected yet. Set API_BASE in config.js.",
-    true
-  );
-  return false;
+async function checkBackend(showError = false) {
+  setLiveBadge("checking");
+  try {
+    const res = await fetch(apiUrl("/api/health"), { cache: "no-store" });
+    backendReady = res.ok;
+  } catch {
+    backendReady = false;
+  }
+
+  setLiveBadge(backendReady ? "online" : "setup");
+  if (!backendReady && showError) {
+    showStatus("The Cloudflare backend is not connected yet.", true);
+  }
+  return backendReady;
 }
 
 function fmtDuration(sec) {
@@ -68,10 +86,16 @@ async function api(path, options) {
   try {
     res = await fetch(apiUrl(path), options);
   } catch {
+    backendReady = false;
+    setLiveBadge("setup");
     throw new Error("Could not reach the download backend.");
   }
 
   if (!res.ok) {
+    if (res.status === 503) {
+      backendReady = false;
+      setLiveBadge("setup");
+    }
     let msg = "Request failed.";
     try {
       const data = await res.json();
@@ -80,6 +104,8 @@ async function api(path, options) {
     throw new Error(msg);
   }
 
+  backendReady = true;
+  setLiveBadge("online");
   return res;
 }
 
@@ -94,7 +120,8 @@ pasteBtn.addEventListener("click", async () => {
 analyzeBtn.addEventListener("click", async () => {
   const url = urlInput.value.trim();
   if (!url) return showStatus("Paste a media URL first.", true);
-  if (!backendConfigured()) return;
+
+  if (!backendReady && !(await checkBackend(true))) return;
 
   result.classList.add("hidden");
   setBusy(analyzeBtn, true);
@@ -134,9 +161,7 @@ analyzeBtn.addEventListener("click", async () => {
       b.textContent = f.label;
       b.dataset.id = f.id;
       b.addEventListener("click", () => {
-        document
-          .querySelectorAll(".format")
-          .forEach((x) => x.classList.remove("active"));
+        document.querySelectorAll(".format").forEach((x) => x.classList.remove("active"));
         b.classList.add("active");
         currentQuality = f.id;
       });
@@ -145,11 +170,7 @@ analyzeBtn.addEventListener("click", async () => {
 
     const first = formats.querySelector(".format");
     if (first) first.click();
-    else
-      showStatus(
-        "No compatible downloadable formats were exposed by this source.",
-        true
-      );
+    else showStatus("No compatible downloadable formats were exposed by this source.", true);
 
     result.classList.remove("hidden");
     result.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -164,7 +185,8 @@ downloadBtn.addEventListener("click", async () => {
   if (!currentUrl || !currentQuality) {
     return showStatus("Choose a format first.", true);
   }
-  if (!backendConfigured()) return;
+
+  if (!backendReady && !(await checkBackend(true))) return;
 
   setBusy(downloadBtn, true);
   showStatus("Preparing your file…");
@@ -180,9 +202,7 @@ downloadBtn.addEventListener("click", async () => {
     const cd = res.headers.get("content-disposition") || "";
     const match = cd.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
     const filename = decodeURIComponent(
-      match?.[1] ||
-        match?.[2] ||
-        (currentQuality === "audio" ? "audio.mp3" : "video.mp4")
+      match?.[1] || match?.[2] || (currentQuality === "audio" ? "audio.mp3" : "video.mp4")
     );
 
     const objectUrl = URL.createObjectURL(blob);
@@ -205,3 +225,5 @@ downloadBtn.addEventListener("click", async () => {
 urlInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") analyzeBtn.click();
 });
+
+checkBackend();
