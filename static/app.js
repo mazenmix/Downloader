@@ -1,1 +1,207 @@
-const $=id=>document.getElementById(id);const urlInput=$("urlInput"),pasteBtn=$("pasteBtn"),analyzeBtn=$("analyzeBtn"),result=$("result"),thumb=$("thumb"),title=$("title"),uploader=$("uploader"),source=$("source"),duration=$("duration"),formats=$("formats"),downloadBtn=$("downloadBtn"),statusBox=$("status");let currentUrl="",currentQuality="";function fmtDuration(sec){if(!Number.isFinite(sec))return"";sec=Math.floor(sec);const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`}function showStatus(message,error=false){statusBox.textContent=message;statusBox.classList.remove("hidden","error");if(error)statusBox.classList.add("error");clearTimeout(showStatus.timer);showStatus.timer=setTimeout(()=>statusBox.classList.add("hidden"),4500)}function setBusy(button,busy){const text=button.querySelector(button===analyzeBtn?".btnText":".downloadText"),spinner=button.querySelector(".spinner");button.disabled=busy;text&&text.classList.toggle("hidden",busy);spinner?.classList.toggle("hidden",!busy)}async function api(path,options){const res=await fetch(path,options);if(!res.ok){let msg="Request failed.";try{const data=await res.json();msg=data.detail||msg}catch{}throw new Error(msg)}return res}pasteBtn.addEventListener("click",async()=>{try{urlInput.value=await navigator.clipboard.readText()}catch{showStatus("Clipboard permission was not available.",true)}});analyzeBtn.addEventListener("click",async()=>{const url=urlInput.value.trim();if(!url)return showStatus("Paste a media URL first.",true);result.classList.add("hidden");setBusy(analyzeBtn,true);try{const res=await api("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})}),data=await res.json();currentUrl=url;currentQuality="";title.textContent=data.title||"Untitled media";uploader.textContent=data.uploader||"";source.textContent=(data.extractor||"MEDIA").toUpperCase();if(data.thumbnail){thumb.src=data.thumbnail;thumb.style.visibility="visible"}else{thumb.removeAttribute("src");thumb.style.visibility="hidden"}const d=fmtDuration(data.duration);duration.textContent=d;duration.classList.toggle("hidden",!d);formats.innerHTML="";for(const f of data.formats||[]){const b=document.createElement("button");b.type="button";b.className="format";b.textContent=f.label;b.dataset.id=f.id;b.addEventListener("click",()=>{document.querySelectorAll(".format").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentQuality=f.id});formats.appendChild(b)}const first=formats.querySelector(".format");if(first)first.click();else showStatus("No compatible downloadable formats were exposed by this source.",true);result.classList.remove("hidden");result.scrollIntoView({behavior:"smooth",block:"center"})}catch(err){showStatus(err.message,true)}finally{setBusy(analyzeBtn,false)}});downloadBtn.addEventListener("click",async()=>{if(!currentUrl||!currentQuality)return showStatus("Choose a format first.",true);setBusy(downloadBtn,true);showStatus("Preparing your file…");try{const res=await api("/api/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:currentUrl,quality:currentQuality})}),blob=await res.blob(),cd=res.headers.get("content-disposition")||"",match=cd.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i),filename=decodeURIComponent(match?.[1]||match?.[2]||(currentQuality==="audio"?"audio.mp3":"video.mp4")),objectUrl=URL.createObjectURL(blob),a=document.createElement("a");a.href=objectUrl;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);showStatus("Download ready.")}catch(err){showStatus(err.message,true)}finally{setBusy(downloadBtn,false)}});urlInput.addEventListener("keydown",e=>{if(e.key==="Enter")analyzeBtn.click()});
+const $ = (id) => document.getElementById(id);
+
+const urlInput = $("urlInput");
+const pasteBtn = $("pasteBtn");
+const analyzeBtn = $("analyzeBtn");
+const result = $("result");
+const thumb = $("thumb");
+const title = $("title");
+const uploader = $("uploader");
+const source = $("source");
+const duration = $("duration");
+const formats = $("formats");
+const downloadBtn = $("downloadBtn");
+const statusBox = $("status");
+
+const API_BASE = (window.MX_CONFIG?.API_BASE || "").replace(/\/+$/, "");
+
+let currentUrl = "";
+let currentQuality = "";
+
+function apiUrl(path) {
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+
+function backendConfigured() {
+  // Local FastAPI serves frontend + API from the same origin, so blank is valid locally.
+  const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+  if (API_BASE || localHosts.has(location.hostname)) return true;
+
+  showStatus(
+    "Frontend is online, but the download backend is not connected yet. Set API_BASE in config.js.",
+    true
+  );
+  return false;
+}
+
+function fmtDuration(sec) {
+  if (!Number.isFinite(sec)) return "";
+  sec = Math.floor(sec);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function showStatus(message, error = false) {
+  statusBox.textContent = message;
+  statusBox.classList.remove("hidden", "error");
+  if (error) statusBox.classList.add("error");
+  clearTimeout(showStatus.timer);
+  showStatus.timer = setTimeout(() => statusBox.classList.add("hidden"), 5000);
+}
+
+function setBusy(button, busy) {
+  const text = button.querySelector(
+    button === analyzeBtn ? ".btnText" : ".downloadText"
+  );
+  const spinner = button.querySelector(".spinner");
+  button.disabled = busy;
+  if (text) text.classList.toggle("hidden", busy);
+  spinner?.classList.toggle("hidden", !busy);
+}
+
+async function api(path, options) {
+  let res;
+  try {
+    res = await fetch(apiUrl(path), options);
+  } catch {
+    throw new Error("Could not reach the download backend.");
+  }
+
+  if (!res.ok) {
+    let msg = "Request failed.";
+    try {
+      const data = await res.json();
+      msg = data.detail || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return res;
+}
+
+pasteBtn.addEventListener("click", async () => {
+  try {
+    urlInput.value = await navigator.clipboard.readText();
+  } catch {
+    showStatus("Clipboard permission was not available.", true);
+  }
+});
+
+analyzeBtn.addEventListener("click", async () => {
+  const url = urlInput.value.trim();
+  if (!url) return showStatus("Paste a media URL first.", true);
+  if (!backendConfigured()) return;
+
+  result.classList.add("hidden");
+  setBusy(analyzeBtn, true);
+
+  try {
+    const res = await api("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+    const data = await res.json();
+    currentUrl = url;
+    currentQuality = "";
+
+    title.textContent = data.title || "Untitled media";
+    uploader.textContent = data.uploader || "";
+    source.textContent = (data.extractor || "MEDIA").toUpperCase();
+
+    if (data.thumbnail) {
+      thumb.src = data.thumbnail;
+      thumb.style.visibility = "visible";
+    } else {
+      thumb.removeAttribute("src");
+      thumb.style.visibility = "hidden";
+    }
+
+    const d = fmtDuration(data.duration);
+    duration.textContent = d;
+    duration.classList.toggle("hidden", !d);
+
+    formats.innerHTML = "";
+    for (const f of data.formats || []) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "format";
+      b.textContent = f.label;
+      b.dataset.id = f.id;
+      b.addEventListener("click", () => {
+        document
+          .querySelectorAll(".format")
+          .forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        currentQuality = f.id;
+      });
+      formats.appendChild(b);
+    }
+
+    const first = formats.querySelector(".format");
+    if (first) first.click();
+    else
+      showStatus(
+        "No compatible downloadable formats were exposed by this source.",
+        true
+      );
+
+    result.classList.remove("hidden");
+    result.scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (err) {
+    showStatus(err.message, true);
+  } finally {
+    setBusy(analyzeBtn, false);
+  }
+});
+
+downloadBtn.addEventListener("click", async () => {
+  if (!currentUrl || !currentQuality) {
+    return showStatus("Choose a format first.", true);
+  }
+  if (!backendConfigured()) return;
+
+  setBusy(downloadBtn, true);
+  showStatus("Preparing your file…");
+
+  try {
+    const res = await api("/api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: currentUrl, quality: currentQuality }),
+    });
+
+    const blob = await res.blob();
+    const cd = res.headers.get("content-disposition") || "";
+    const match = cd.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
+    const filename = decodeURIComponent(
+      match?.[1] ||
+        match?.[2] ||
+        (currentQuality === "audio" ? "audio.mp3" : "video.mp4")
+    );
+
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+    showStatus("Download ready.");
+  } catch (err) {
+    showStatus(err.message, true);
+  } finally {
+    setBusy(downloadBtn, false);
+  }
+});
+
+urlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") analyzeBtn.click();
+});
