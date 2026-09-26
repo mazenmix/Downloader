@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mx-downloader-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: CORS_ORIGINS
+        value: "*"
