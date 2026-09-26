@@ -11,6 +11,37 @@ MX Downloader is a clean web app for analyzing and downloading public media link
 - No personal link history by default
 - Rejects localhost/private-network targets to reduce SSRF risk
 
+## Recommended deployment
+
+### 1. Frontend — Cloudflare Pages
+Connect this repository to Cloudflare Pages with:
+
+- Repository: `mazenmix/Downloader`
+- Production branch: `main`
+- Framework preset: `None`
+- Build command: `exit 0`
+- Build output directory: `static`
+- Root directory: repository root
+
+Cloudflare will publish the frontend on a `*.pages.dev` address and redeploy after Git pushes.
+
+### 2. Backend — Render Free Web Service
+This repository includes `render.yaml` and a Dockerfile that install FFmpeg and run FastAPI/yt-dlp.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/mazenmix/Downloader)
+
+After Render creates the service, copy its public `https://...onrender.com` URL and put it in `static/config.js`:
+
+```js
+window.MX_CONFIG = {
+  API_BASE: "https://YOUR-SERVICE.onrender.com"
+};
+```
+
+Then Cloudflare Pages will automatically redeploy from the GitHub update.
+
+> Render Free services can spin down after inactivity, so the first request after an idle period may take longer.
+
 ## Local Windows start
 1. Install Python 3.11+
 2. Install FFmpeg and make sure `ffmpeg` is in PATH
@@ -22,9 +53,6 @@ MX Downloader is a clean web app for analyzing and downloading public media link
 docker build -t mx-downloader .
 docker run --rm -p 8000:8000 mx-downloader
 ```
-
-## Deployment note
-GitHub Pages or Cloudflare Pages alone cannot run the Python + yt-dlp + FFmpeg backend. For a public deployment, run the app on a server/container host and optionally put Cloudflare in front of it.
 
 ## Usage
 Use only with media you own or are permitted to download. The app does not attempt to bypass DRM, paywalls, private/login-only content, or access controls.
