@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#090b10" />
+  <title>MX Downloader</title>
+  <meta name="description" content="Fast, clean media downloader for public links you are allowed to save." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient a1"></div>
+  <div class="ambient a2"></div>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <div class="brand-mark">MX</div>
+      <div><div class="brand-name">MX Downloader</div><div class="brand-sub">Fast • Private • Clean</div></div>
+    </a>
+    <div class="live"><span></span> ONLINE</div>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">ONE LINK. MULTIPLE FORMATS.</div>
+      <h1>Download public media<br><span>without the clutter.</span></h1>
+      <p class="lead">Paste a public video link. MX Downloader detects available formats and prepares a clean download.</p>
+      <div class="search-card">
+        <label for="urlInput">Media URL</label>
+        <div class="url-row">
+          <input id="urlInput" type="url" autocomplete="off" spellcheck="false" placeholder="https://..." />
+          <button id="pasteBtn" class="secondary" type="button">Paste</button>
+          <button id="analyzeBtn" class="primary" type="button"><span class="btnText">Analyze</span><span class="spinner hidden"></span></button>
+        </div>
+        <div class="hint">Public links only. Private/login-only/DRM-protected media is intentionally not bypassed.</div>
+      </div>
+    </section>
+    <section id="result" class="result-card hidden">
+      <div class="media">
+        <div class="thumb-wrap"><img id="thumb" alt="" /><div id="duration" class="duration hidden"></div></div>
+        <div class="media-info"><div id="source" class="source">SOURCE</div><h2 id="title">Media title</h2><div id="uploader" class="uploader"></div></div>
+      </div>
+      <div class="divider"></div>
+      <div class="download-zone">
+        <div><div class="label">Choose format</div><div id="formats" class="formats"></div></div>
+        <button id="downloadBtn" class="download" type="button"><span class="downloadText">Download</span><span class="spinner hidden"></span></button>
+      </div>
+    </section>
+    <section class="features">
+      <article><div class="icon">⚡</div><h3>Fast workflow</h3><p>Paste, analyze, choose quality, download.</p></article>
+      <article><div class="icon">🛡️</div><h3>No history by default</h3><p>The app does not build a personal link history.</p></article>
+      <article><div class="icon">🎬</div><h3>Video + audio</h3><p>MP4 qualities and MP3 when the source exposes audio.</p></article>
+    </section>
+    <div id="status" class="status hidden"></div>
+  </main>
+  <footer><span>MX Downloader</span><span>Use only with media you are permitted to download.</span></footer>
+  <script src="/app.js"></script>
+</body>
+</html>
