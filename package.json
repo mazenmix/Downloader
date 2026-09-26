@@ -1,0 +1,14 @@
+{
+  "name": "mxdownloader-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy:worker": "wrangler deploy -c wrangler.worker.jsonc"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  }
+}
