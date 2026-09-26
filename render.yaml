@@ -1,12 +1,13 @@
 services:
   - type: web
-    name: mx-downloader-api
+    name: mxdownloader-mazenmix-8613887
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
     autoDeployTrigger: commit
+    renderSubdomainPolicy: enabled
     envVars:
       - key: CORS_ORIGINS
         value: "*"
