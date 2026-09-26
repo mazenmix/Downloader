@@ -1,4 +1,4 @@
 // MX Downloader frontend runtime configuration.
 window.MX_CONFIG = {
-  API_BASE: "https://mxdownloader-mazenmix-8613887.onrender.com"
+  API_BASE: "https://mxdownloader-api-production.up.railway.app"
 };
